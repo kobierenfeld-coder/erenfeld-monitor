@@ -2,7 +2,7 @@
 # רץ בשרתים של גיטהאב כל 10 דקות - לא על המחשב של קובי ולא על האתר עצמו, כדי שיעבוד גם כשהם נופלים.
 # הריצה נכשלת (וגיטהאב שולח מייל) כשהמסד איטי מ-1.5 שניות או לא עונה, 3 פעמים ברצף בהפרש חצי דקה.
 # "איטי" = אזהרה מוקדמת: כנראה צריך להגדיל את השרת (Cloud > Advanced settings), לפני שהוא קורס.
-name: בקרת שרת - ארנפלד
+name: בקרת שרת - ארנפלד (סוכנות + משכנתאות)
 on:
   schedule:
     - cron: "*/10 * * * *"
@@ -35,6 +35,31 @@ jobs:
           code=$(curl -s -o /dev/null -m 30 -w '%{http_code}' "https://erenfeld-ins.co.il/?r=$RANDOM")
           echo "home http=$code"
           [ "$code" = "200" ] || { echo "::error title=דף הבית לא עונה::http=$code"; exit 1; }
+  e-mortgages:
+    # אתר ארנפלד משכנתאות (עלה ללאבייבל 12.10.2026). אותה בדיקה: מסד + אחסון דרך /api/public/health,
+    # 3 תוצאות רעות ברצף = הריצה נכשלת וגיטהאב שולח מייל. ודף הבית ומחשבון המשכנתא עונים 200.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: מסד הנתונים של e-mortgages.co.il
+        run: |
+          url="https://e-mortgages.co.il/api/public/health"
+          for i in 1 2 3; do
+            body=$(curl -s -m 25 -w '\n%{http_code}' "$url?r=$RANDOM") || body=$'\n000'
+            code=$(echo "$body" | tail -1); json=$(echo "$body" | head -n -1)
+            echo "try $i: http=$code $json"
+            if [ "$code" = "200" ] && echo "$json" | grep -q '"status":"ok"'; then echo "OK"; exit 0; fi
+            sleep 30
+          done
+          echo "::error title=השרת של אתר המשכנתאות במצוקה::המסד איטי או לא עונה 3 פעמים ברצף ($json). לבדוק CPU/Memory ב-Lovable Cloud > Advanced settings של Erenfeld Mortgages."
+          exit 1
+      - name: דף הבית ומחשבון המשכנתא
+        run: |
+          for p in "/" "/%D7%9E%D7%97%D7%A9%D7%91%D7%95%D7%9F-%D7%9E%D7%A9%D7%9B%D7%A0%D7%AA%D7%90"; do
+            code=$(curl -s -o /dev/null -m 30 -w '%{http_code}' "https://e-mortgages.co.il$p?r=$RANDOM")
+            echo "$p http=$code"
+            [ "$code" = "200" ] || { echo "::error title=אתר המשכנתאות לא עונה::$p http=$code"; exit 1; }
+          done
   keepalive:
     # גיטהאב מכבה תזמון במאגר ציבורי אחרי 60 יום בלי פעילות - קומיט קטן ב-1 לכל חודש שומר אותו חי.
     runs-on: ubuntu-latest

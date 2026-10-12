@@ -1,6 +1,6 @@
 # בקרת שרת - ארנפלד
 
-בודק כל 10 דקות את `https://erenfeld-ins.co.il/api/public/health` (זמן קריאה מהמסד ומהאחסון).
+בודק כל 10 דקות את `https://erenfeld-ins.co.il/api/public/health` ואת `https://e-mortgages.co.il/api/public/health` (מ-12.10.2026), זמן קריאה מהמסד ומהאחסון, ואת דפי הבית.
 - `ok` - תקין.
 - `slow` - המסד עונה לאט (מעל 1.5 שניות): אזהרה מוקדמת, כנראה צריך להגדיל את השרת ב-Lovable Cloud.
 - `critical` / אין תשובה - תקלה.
