@@ -7,6 +7,10 @@ on:
   schedule:
     - cron: "*/10 * * * *"
   workflow_dispatch:
+    inputs:
+      url:
+        description: "כתובת לבדיקה (לבדיקת כשל מכוונת בלבד)"
+        default: "https://erenfeld-ins.co.il/api/public/health"
 permissions:
   contents: write
 jobs:
@@ -16,7 +20,7 @@ jobs:
     steps:
       - name: מסד הנתונים של erenfeld-ins.co.il
         run: |
-          url="https://erenfeld-ins.co.il/api/public/health"
+          url="${{ inputs.url || 'https://erenfeld-ins.co.il/api/public/health' }}"
           for i in 1 2 3; do
             body=$(curl -s -m 25 -w '\n%{http_code}' "$url?r=$RANDOM") || body=$'\n000'
             code=$(echo "$body" | tail -1); json=$(echo "$body" | head -n -1)
