@@ -2,7 +2,7 @@
 # רץ בשרתים של גיטהאב כל 10 דקות - לא על המחשב של קובי ולא על האתר עצמו, כדי שיעבוד גם כשהם נופלים.
 # הריצה נכשלת (וגיטהאב שולח מייל) כשהמסד איטי מ-1.5 שניות או לא עונה, 3 פעמים ברצף בהפרש חצי דקה.
 # "איטי" = אזהרה מוקדמת: כנראה צריך להגדיל את השרת (Cloud > Advanced settings), לפני שהוא קורס.
-name: בקרת שרת - ארנפלד (סוכנות + משכנתאות)
+name: בקרת שרת - ארנפלד (סוכנות + משכנתאות + נדל"ן)
 on:
   schedule:
     - cron: "*/10 * * * *"
@@ -59,6 +59,32 @@ jobs:
             code=$(curl -s -o /dev/null -m 30 -w '%{http_code}' "https://e-mortgages.co.il$p?r=$RANDOM")
             echo "$p http=$code"
             [ "$code" = "200" ] || { echo "::error title=אתר המשכנתאות לא עונה::$p http=$code"; exit 1; }
+          done
+  e-realestate:
+    # אתר ארנפלד נדל"ן (e-realestate.co.il). אותה בדיקה: מסד + אחסון דרך /api/public/health,
+    # 3 תוצאות רעות ברצף = הריצה נכשלת וגיטהאב שולח מייל. ודף הבית וקטגוריית אירופה (הכתובת המקוננת,
+    # 1,028 הופעות ב-90 יום) עונים 200. נדחף רק אחרי שה-health עונה 200 על הדומיין (יום המעבר).
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: מסד הנתונים של e-realestate.co.il
+        run: |
+          url="https://e-realestate.co.il/api/public/health"
+          for i in 1 2 3; do
+            body=$(curl -s -m 25 -w '\n%{http_code}' "$url?r=$RANDOM") || body=$'\n000'
+            code=$(echo "$body" | tail -1); json=$(echo "$body" | head -n -1)
+            echo "try $i: http=$code $json"
+            if [ "$code" = "200" ] && echo "$json" | grep -q '"status":"ok"'; then echo "OK"; exit 0; fi
+            sleep 30
+          done
+          echo "::error title=השרת של אתר הנדל״ן במצוקה::המסד איטי או לא עונה 3 פעמים ברצף ($json). לבדוק CPU/Memory ב-Lovable Cloud > Advanced settings של Erenfeld Realestate."
+          exit 1
+      - name: דף הבית וקטגוריית אירופה
+        run: |
+          for p in "/" "/%D7%94%D7%A9%D7%A7%D7%A2%D7%95%D7%AA-%D7%A0%D7%93%D7%9C%D7%9F-%D7%91%D7%97%D7%95%D7%9C/%D7%94%D7%A9%D7%A7%D7%A2%D7%95%D7%AA-%D7%A0%D7%93%D7%9C%D7%9F-%D7%91%D7%90%D7%99%D7%A8%D7%95%D7%A4%D7%94"; do
+            code=$(curl -s -o /dev/null -m 30 -w '%{http_code}' "https://e-realestate.co.il$p?r=$RANDOM")
+            echo "$p http=$code"
+            [ "$code" = "200" ] || { echo "::error title=אתר הנדל״ן לא עונה::$p http=$code"; exit 1; }
           done
   keepalive:
     # גיטהאב מכבה תזמון במאגר ציבורי אחרי 60 יום בלי פעילות - קומיט קטן ב-1 לכל חודש שומר אותו חי.
