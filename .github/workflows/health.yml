@@ -1,0 +1,46 @@
+# בקרת שרת - אתר ארנפלד סוכנות לביטוח (קובי 12.10.2026, אחרי שמסד הנתונים נפל בלילה ואף אחד לא ידע).
+# רץ בשרתים של גיטהאב כל 10 דקות - לא על המחשב של קובי ולא על האתר עצמו, כדי שיעבוד גם כשהם נופלים.
+# הריצה נכשלת (וגיטהאב שולח מייל) כשהמסד איטי מ-1.5 שניות או לא עונה, 3 פעמים ברצף בהפרש חצי דקה.
+# "איטי" = אזהרה מוקדמת: כנראה צריך להגדיל את השרת (Cloud > Advanced settings), לפני שהוא קורס.
+name: בקרת שרת - ארנפלד
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: מסד הנתונים של erenfeld-ins.co.il
+        run: |
+          url="https://erenfeld-ins.co.il/api/public/health"
+          for i in 1 2 3; do
+            body=$(curl -s -m 25 -w '\n%{http_code}' "$url?r=$RANDOM") || body=$'\n000'
+            code=$(echo "$body" | tail -1); json=$(echo "$body" | head -n -1)
+            echo "try $i: http=$code $json"
+            if [ "$code" = "200" ] && echo "$json" | grep -q '"status":"ok"'; then echo "OK"; exit 0; fi
+            sleep 30
+          done
+          echo "::error title=השרת של אתר הסוכנות במצוקה::המסד איטי או לא עונה 3 פעמים ברצף ($json). לבדוק CPU/Memory ב-Lovable Cloud > Advanced settings ולשקול הגדלה."
+          exit 1
+      - name: דף הבית של erenfeld-ins.co.il
+        run: |
+          code=$(curl -s -o /dev/null -m 30 -w '%{http_code}' "https://erenfeld-ins.co.il/?r=$RANDOM")
+          echo "home http=$code"
+          [ "$code" = "200" ] || { echo "::error title=דף הבית לא עונה::http=$code"; exit 1; }
+  keepalive:
+    # גיטהאב מכבה תזמון במאגר ציבורי אחרי 60 יום בלי פעילות - קומיט קטן ב-1 לכל חודש שומר אותו חי.
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - name: keepalive
+        run: |
+          if [ "$(date -u +%d%H%M | cut -c1-4)" = "0103" ] && [ "$(date -u +%M)" -lt 10 ]; then
+            date -u +%F > .keepalive
+            git config user.name "erenfeld-monitor"; git config user.email "monitor@users.noreply.github.com"
+            git add .keepalive && git commit -m "keepalive $(date -u +%F)" && git push
+          else echo "not today"; fi
