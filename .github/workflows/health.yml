@@ -35,6 +35,21 @@ jobs:
           code=$(curl -s -o /dev/null -m 30 -w '%{http_code}' "https://erenfeld-ins.co.il/?r=$RANDOM")
           echo "home http=$code"
           [ "$code" = "200" ] || { echo "::error title=דף הבית לא עונה::http=$code"; exit 1; }
+      - name: מאמרים של erenfeld-ins.co.il (GET אמיתי, לא רק בדיקת המסד)
+        # 16.10.2026: מאמרים שלא היו במטמון נתקעו דקות ארוכות, בזמן שבדיקת המסד ודף הבית עברו.
+        # פרמטר אקראי מכריח את מסלול הרינדור. דף שלא עונה תוך 20 שניות מקבל ניסיון שני אחרי 30 שניות.
+        run: |
+          bad=0
+          for p in /har-habituach /maslaka-pensionit /find-funds-policies/articles/locating-savings-life-insurance /health-insurance/articles/health-insurance-cost; do
+            for t in 1 2; do
+              r=$(curl -s -o /dev/null -m 20 -w '%{http_code} %{time_total}' "https://erenfeld-ins.co.il$p?r=$RANDOM") || r="000 20"
+              echo "$p try $t: $r"
+              [ "${r%% *}" = "200" ] && break
+              [ $t = 1 ] && sleep 30
+            done
+            [ "${r%% *}" = "200" ] || { echo "::error title=דף באתר הסוכנות לא נטען::$p ($r)"; bad=1; }
+          done
+          exit $bad
   e-mortgages:
     # אתר ארנפלד משכנתאות (עלה ללאבייבל 12.10.2026). אותה בדיקה: מסד + אחסון דרך /api/public/health,
     # 3 תוצאות רעות ברצף = הריצה נכשלת וגיטהאב שולח מייל. ודף הבית ומחשבון המשכנתא עונים 200.
