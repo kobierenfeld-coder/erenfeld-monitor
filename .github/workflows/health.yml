@@ -140,3 +140,28 @@ jobs:
             git config user.name "erenfeld-monitor"; git config user.email "monitor@users.noreply.github.com"
             git add .keepalive && git commit -m "keepalive $(date -u +%F)" && git push
           else echo "not today"; fi
+  insuland:
+    # אתר אינשולנד (insuland.co.il, עלה ללאבייבל 19.10.2026 13:10). אותה בדיקה: מסד + אחסון דרך /api/public/health,
+    # 3 תוצאות רעות ברצף = הריצה נכשלת וגיטהאב שולח מייל. ודף הבית ועמוד ביטוח בריאות (הכתובת עם הכי הרבה חשיפות) עונים 200.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: מסד הנתונים של insuland.co.il
+        run: |
+          url="https://insuland.co.il/api/public/health"
+          for i in 1 2 3; do
+            body=$(curl -s -m 25 -w '\n%{http_code}' "$url?r=$RANDOM") || body=$'\n000'
+            code=$(echo "$body" | tail -1); json=$(echo "$body" | head -n -1)
+            echo "try $i: http=$code $json"
+            if [ "$code" = "200" ] && echo "$json" | grep -q '"status":"ok"'; then echo "OK"; exit 0; fi
+            sleep 30
+          done
+          echo "::error title=השרת של אינשולנד במצוקה::המסד איטי או לא עונה 3 פעמים ברצף ($json). לבדוק CPU/Memory ב-Lovable Cloud > Advanced settings של Erenfeld Insuland."
+          exit 1
+      - name: דף הבית ועמוד ביטוח בריאות
+        run: |
+          for p in "/" "/%D7%91%D7%99%D7%98%D7%95%D7%97-%D7%91%D7%A8%D7%99%D7%90%D7%95%D7%AA"; do
+            code=$(curl -s -o /dev/null -m 30 -w '%{http_code}' "https://insuland.co.il$p?r=$RANDOM")
+            echo "$p http=$code"
+            [ "$code" = "200" ] || { echo "::error title=אינשולנד לא עונה::$p http=$code"; exit 1; }
+          done
