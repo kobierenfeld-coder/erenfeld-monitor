@@ -1,0 +1,44 @@
+# חימום מטמון - אתר ארנפלד סוכנות לביטוח (23.10.2026, אחרי שגוגל סימן את האתר "איטי" אצל גולשים אמיתיים).
+# כל פריסה באתר מוחקת את כל העמודים השמורים (מזהה ה-build הוא חלק מהמפתח), ואז הגולש הראשון בכל עמוד
+# מחכה שהעמוד ייבנה מאפס (נמדד: 0.60 שנ' זמן שרת מול 0.28 מעמוד שמור).
+# כל 15 דקות: בודק את מזהה ה-build החי. אם הוא חדש - עובר על כל מפת האתר פעם אחת ושומר את המזהה,
+# כדי שבפעם הבאה ידלג. אם לא - יוצא בלי לעשות כלום (אפס עומס על האתר בין פריסות).
+name: חימום מטמון - ארנפלד סוכנות
+on:
+  schedule:
+    - cron: "7,22,37,52 * * * *"
+  workflow_dispatch:
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: מזהה ה-build החי
+        id: build
+        run: |
+          id=$(curl -s -m 20 https://erenfeld-ins.co.il/api/public/version | sed -n 's/.*"buildId":"\([^"]*\)".*/\1/p')
+          echo "buildId=$id"
+          [ -n "$id" ] || { echo "::warning::לא התקבל buildId"; exit 0; }
+          echo "id=$(echo "$id" | tr -c 'A-Za-z0-9' '-')" >> "$GITHUB_OUTPUT"
+      - name: כבר חומם?
+        if: steps.build.outputs.id != ''
+        id: seen
+        uses: actions/cache/restore@v4
+        with:
+          path: .warmed
+          key: warm-${{ steps.build.outputs.id }}
+          lookup-only: true
+      - name: מעבר על מפת האתר
+        if: steps.build.outputs.id != '' && steps.seen.outputs.cache-hit != 'true'
+        run: |
+          curl -s -m 30 --compressed https://erenfeld-ins.co.il/sitemap.xml | grep -oE '<loc>[^<]+' | sed 's/<loc>//' > urls.txt
+          echo "pages=$(wc -l < urls.txt)"
+          xargs -P 6 -I{} curl -s -o /dev/null -m 30 -A 'Mozilla/5.0 (erenfeld-cache-warmer)' -D - -w 'T %{http_code} %{time_starttransfer}\n' {} < urls.txt \
+            | tr -d '\r' | awk '/^x-app-cache:/{c[$2]++} /^T /{n++; if($2!="200")bad++} END{for(k in c) print k, c[k]; print "total", n, "non200", bad+0}'
+          date -u +%FT%TZ > .warmed
+      - name: שמירת המזהה
+        if: steps.build.outputs.id != '' && steps.seen.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .warmed
+          key: warm-${{ steps.build.outputs.id }}
