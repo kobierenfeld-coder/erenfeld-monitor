@@ -15,7 +15,7 @@ In erenfeld-monitor: `git fetch origin heartbeat && git show origin/heartbeat:he
 Fields: `at` (ISO time with offset), `host`, `backup_ok`, `backup_when`, `backup_problems`, `open_incidents`.
 The office PC (DESKTOP-8RTBSJA) refreshes it every 15 minutes and runs the fast local responder.
 - Heartbeat younger than 40 minutes: the PC is on duty. Only do STEP 2 (site check). If the site is broken AND `open_incidents` already lists a `site-*` key, the PC is handling it - stop. Otherwise handle it yourself.
-- Heartbeat 40 minutes or older: the PC is off or the Claude app is down. You are on duty for everything below. Also raise the incident `pc-offline` (STEP 4, level `warning`, dedupe_key `pc-offline-<heartbeat at>` so it is reported once per outage): "המחשב במשרד לא מגיב מאז <time>. כל עוד הוא כבוי לא רצים הגיבוי הלילי והמשימות האוטומטיות. הכונן בענן ממשיך לשמור על האתר כל שעה." If `backup_when` is older than 26 hours, raise `backup-stale` (level `problem`).
+- Heartbeat 40 minutes or older: the PC is off or the Claude app is down. You are on duty for everything below. Also raise the incident `pc-offline` (STEP 4, level `problem` - Kobi must switch the PC on, dedupe_key `pc-offline-<heartbeat at>` so it is reported once per outage): "המחשב במשרד לא מגיב מאז <time>. כל עוד הוא כבוי לא רצים הגיבוי הלילי והמשימות האוטומטיות. הכונן בענן ממשיך לשמור על האתר כל שעה." If `backup_when` is older than 26 hours, raise `backup-stale` (level `problem`).
 
 ## STEP 2 - check the site (measure, do not guess)
 - `https://erenfeld-ins.co.il/` must be 200 and over 20,000 bytes, within 15 s.
@@ -40,5 +40,5 @@ Before writing, `git pull` and skip if a file with the same dedupe_key already e
 Commit and push it to a branch named `claude/incidents-<UTC date>` (create or reuse; never main). The workflow `.github/workflows/incident-bell.yml` posts every new file to the CRM bell.
 - Fixed and verified (STEP 2 passes again): level `success`, what broke, the cause, what was done.
 - Needs Kobi: level `problem`, the ONE last step only he can do, with the link.
-For level `problem` also send ONE PushNotification in Hebrew (two sentences: what is broken, what he must do). Never send a push for `success` or `warning`.
+Kobi 28.10.2026: he cannot read many messages. Only level `problem` (a step only he can do) reaches him: send ONE PushNotification in Hebrew (two sentences: what is broken, what he must do). `success` and `warning` files are a log only - the bridge does not post them and no push is sent.
 End with a 2-3 line Hebrew summary.

@@ -32,6 +32,8 @@ jobs:
           [ -n "$files" ] || { echo "no new incident files"; exit 0; }
           fail=0
           for f in $files; do
+            # 28.10.2026: only what needs Kobi; fixed/warning files are a log.
+            [ "$(jq -r '.level // "problem"' "$f")" = "problem" ] || { echo "$f: log only"; continue; }
             body=$(jq -c '{kind:"incident_responder_cloud", level:(.level // "problem"), title_he, body_he, dedupe_key:("cloud:" + (.dedupe_key // input_filename))}' "$f")
             code=$(curl -s -o /tmp/r.txt -w '%{http_code}' -m 40 -X POST \
               -H "X-API-Key: $KEY" -H 'Content-Type: application/json' -H 'Accept: application/json' \
