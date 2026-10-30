@@ -11,6 +11,9 @@ on:
       url:
         description: "כתובת לבדיקה (לבדיקת כשל מכוונת בלבד)"
         default: "https://erenfeld-ins.co.il/api/public/health"
+      alert_test:
+        description: "לשלוח התראת וואטסאפ לקובי גם כשהכל תקין (בדיקה מכוונת)"
+        default: "false"
 permissions:
   contents: write
 jobs:
@@ -165,3 +168,54 @@ jobs:
             echo "$p http=$code"
             [ "$code" = "200" ] || { echo "::error title=אינשולנד לא עונה::$p http=$code"; exit 1; }
           done
+
+  # (ב) התראת וואטסאפ לקובי כשאתר לא באוויר (הכרעת קובי 30.10.2026: וואטסאפ לשלושה מקרים, וזה אחד מהם).
+  # נשלח מכאן ולא מהאתר, כי אתר שנפל לא יכול להתריע על עצמו. סדר הערוצים כמו ב-owner-events.server.ts:
+  # 1. טקסט חופשי (עובד רק אם חלון 24 השעות של קובי מול המספר העסקי פתוח),
+  # 2. התבנית המאושרת owner_event_v1 (סוכן הוואטסאפ מגיש אותה לאישור מטא),
+  # 3. המייל של גיטהאב על ריצה שנכשלה - נשלח ממילא, ולכן ההתראה לעולם לא שקטה.
+  # הסודות (קובי מוסיף ב-Settings > Secrets and variables > Actions): WA_TOKEN, WA_PHONE_NUMBER_ID.
+  # בלי הסודות המשימה לא נכשלת - היא כותבת שורה ביומן ומסתיימת, והמייל נשאר הערוץ היחיד.
+  alert:
+    needs: [health, e-mortgages, e-realestate, e-loans, insuland]
+    if: always() && (failure() || inputs.alert_test == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: וואטסאפ לקובי - אתר לא באוויר
+        env:
+          WA_TOKEN: ${{ secrets.WA_TOKEN }}
+          WA_PHONE_NUMBER_ID: ${{ secrets.WA_PHONE_NUMBER_ID }}
+          OWNER_WA: "972526608687"
+          R_HEALTH: ${{ needs.health.result }}
+          R_MORT: ${{ needs['e-mortgages'].result }}
+          R_REAL: ${{ needs['e-realestate'].result }}
+          R_LOANS: ${{ needs['e-loans'].result }}
+          R_INSU: ${{ needs.insuland.result }}
+          IS_TEST: ${{ inputs.alert_test }}
+        run: |
+          down=""
+          [ "$R_HEALTH" = "failure" ] && down="$down erenfeld-ins.co.il"
+          [ "$R_MORT"   = "failure" ] && down="$down e-mortgages.co.il"
+          [ "$R_REAL"   = "failure" ] && down="$down e-realestate.co.il"
+          [ "$R_LOANS"  = "failure" ] && down="$down e-loans.co.il"
+          [ "$R_INSU"   = "failure" ] && down="$down insuland.co.il"
+          [ "$IS_TEST" = "true" ] && down="${down:- (בדיקה מכוונת, שום אתר לא נפל)}"
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          text="האתר לא באוויר:$down. הבקרה נכשלה 3 פעמים ברצף. $run_url"
+          echo "ההתראה: $text"
+          if [ -z "$WA_TOKEN" ] || [ -z "$WA_PHONE_NUMBER_ID" ]; then
+            echo "::warning title=אין סוד וואטסאפ::WA_TOKEN / WA_PHONE_NUMBER_ID לא הוגדרו במאגר. ההתראה יוצאת רק במייל של גיטהאב."
+            exit 0
+          fi
+          api="https://graph.facebook.com/v25.0/$WA_PHONE_NUMBER_ID/messages"
+          free=$(curl -s -m 25 -X POST "$api" -H "Authorization: Bearer $WA_TOKEN" -H "Content-Type: application/json" \
+            -d "$(jq -n --arg to "$OWNER_WA" --arg b "$text" '{messaging_product:"whatsapp",to:$to,type:"text",text:{body:$b}}')")
+          echo "free text: $(echo "$free" | head -c 400)"
+          if echo "$free" | grep -q '"messages"'; then echo "נשלח בטקסט חופשי"; exit 0; fi
+          tpl=$(curl -s -m 25 -X POST "$api" -H "Authorization: Bearer $WA_TOKEN" -H "Content-Type: application/json" \
+            -d "$(jq -n --arg to "$OWNER_WA" --arg a "האתר לא באוויר:$down" --arg u "$run_url" \
+              '{messaging_product:"whatsapp",to:$to,type:"template",template:{name:"owner_event_v1",language:{code:"he"},components:[{type:"body",parameters:[{type:"text",text:$a},{type:"text",text:$u}]}]}}')")
+          echo "template: $(echo "$tpl" | head -c 400)"
+          if echo "$tpl" | grep -q '"messages"'; then echo "נשלח בתבנית owner_event_v1"; exit 0; fi
+          echo "::warning title=הוואטסאפ לא יצא::גם טקסט חופשי וגם התבנית נדחו. ההתראה יוצאת במייל של גיטהאב."
