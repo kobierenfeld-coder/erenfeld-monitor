@@ -43,9 +43,11 @@ jobs:
         # פרמטר אקראי מכריח את מסלול הרינדור. דף שלא עונה תוך 20 שניות מקבל ניסיון שני אחרי 30 שניות.
         run: |
           bad=0
-          for p in /har-habituach /maslaka-pensionit /find-funds-policies/articles/locating-savings-life-insurance /health-insurance/articles/health-insurance-cost; do
+          # 30.10.2026: הכתובת של כתבת איתור הכספים השתנתה והמשגיח נכשל על 301 - לא תקלה באתר אלא הפניה.
+          # מעכשיו הבדיקה הולכת עד היעד (-L) ומודדת את הקוד הסופי, כדי שהפניה לא תעיר את קובי בלילה.
+          for p in /har-habituach /maslaka-pensionit /find-funds-policies/articles/life-insurance-har-habituach-report /health-insurance/articles/health-insurance-cost; do
             for t in 1 2; do
-              r=$(curl -s -o /dev/null -m 20 -H 'x-cache-refresh: 1' -w '%{http_code} %{time_total}' "https://erenfeld-ins.co.il$p?r=$RANDOM") || r="000 20"
+              r=$(curl -sL -o /dev/null -m 20 -H 'x-cache-refresh: 1' -w '%{http_code} %{time_total}' "https://erenfeld-ins.co.il$p?r=$RANDOM") || r="000 20"
               echo "$p try $t: $r"
               [ "${r%% *}" = "200" ] && break
               [ $t = 1 ] && sleep 30
